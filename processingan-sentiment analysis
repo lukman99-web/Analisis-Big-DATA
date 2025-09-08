@@ -1,0 +1,459 @@
+
+!pip install pandas numpy matplotlib seaborn scikit-learn transformers wordcloud Sastrawi textblob
+!python -m textblob.download_corpora
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import re
+from collections import Counter
+from wordcloud import WordCloud
+from textblob import TextBlob
+from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
+from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.metrics import classification_report, confusion_matrix
+import warnings
+warnings.filterwarnings('ignore')
+
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+
+def read_preprocessed_file(file_path):
+    """Membaca file hasil preprocessing"""
+    try:
+        if file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        elif file_path.endswith('.xlsx'):
+            df = pd.read_excel(file_path)
+        elif file_path.endswith('.json'):
+            df = pd.read_json(file_path)
+        else:
+            raise ValueError("Format file tidak didukung")
+        
+        print(f"File berhasil dibaca. Shape: {df.shape}")
+        print("\nKolom yang tersedia:")
+        print(df.columns.tolist())
+        print("\n5 baris pertama:")
+        print(df.head())
+        
+        return df
+    
+    except Exception as e:
+        print(f"Error membaca file: {e}")
+        return None
+
+
+def indonesian_text_preprocessing(text):
+    """Preprocessing khusus untuk teks bahasa Indonesia"""
+    if pd.isna(text):
+        return ""
+    
+    text = str(text)
+    
+    # Case folding
+    text = text.lower()
+    
+    # Remove punctuation and numbers
+    text = re.sub(r'[^a-zA-Z\s]', ' ', text)
+    
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
+# Fungsi analisis sentimen menggunakan lexicon-based approach
+def lexicon_based_sentiment_analysis(texts):
+    """Analisis sentimen menggunakan lexicon bahasa Indonesia"""
+    
+    # Lexicon positif dan negatif bahasa Indonesia
+    positive_words = [
+        'bagus', 'baik', 'mantap', 'hebat', 'luar biasa', 'keren', 'fantastis',
+        'memuaskan', 'puas', 'senang', 'gembira', 'bahagia', 'suka', 'cinta',
+        'empuk', 'enak', 'lezat', 'nikmat', 'recommended', 'rekomendasi',
+        'terbaik', 'unggul', 'istimewa', 'wow', 'oke', 'ok', 'yes', 'sukses',
+        'berhasil', 'mantul', 'cemerlang', 'gemilang', 'paripurna', 'sempurna'
+    ]
+    
+    negative_words = [
+        'jelek', 'buruk', 'parah', 'gagal', 'mengecewakan', 'kecewa', 'sedih',
+        'marah', 'kesal', 'jengkel', 'frustasi', 'tidak suka', 'benci', 'dendam',
+        'alas', 'keras', 'tawar', 'basi', 'busuk', 'tidak recommended', 'avoid',
+        'terburuk', 'terjelek', 'payah', 'ampas', 'sampah', 'rusak', 'cacat',
+        'error', 'gagal', 'bangkrut', 'rugi', 'hilang', 'hancur', 'patah'
+    ]
+    
+    sentiments = []
+    positive_scores = []
+    negative_scores = []
+    
+    for text in texts:
+        text = str(text).lower()
+        words = text.split()
+        
+        pos_count = sum(1 for word in words if word in positive_words)
+        neg_count = sum(1 for word in words if word in negative_words)
+        
+        positive_scores.append(pos_count)
+        negative_scores.append(neg_count)
+        
+        if pos_count > neg_count:
+            sentiments.append('positif')
+        elif neg_count > pos_count:
+            sentiments.append('negatif')
+        else:
+            sentiments.append('netral')
+    
+    return sentiments, positive_scores, negative_scores
+
+# Fungsi analisis sentimen menggunakan TextBlob
+def textblob_sentiment_analysis(texts):
+    """Analisis sentimen menggunakan TextBlob dengan penyesuaian untuk bahasa Indonesia"""
+    sentiments = []
+    polarity_scores = []
+    subjectivity_scores = []
+    
+    for text in texts:
+        text = str(text)
+        blob = TextBlob(text)
+        
+        # Adjust polarity untuk bahasa Indonesia
+        polarity = blob.sentiment.polarity
+        subjectivity = blob.sentiment.subjectivity
+        
+        polarity_scores.append(polarity)
+        subjectivity_scores.append(subjectivity)
+        
+        if polarity > 0.1:
+            sentiments.append('positif')
+        elif polarity < -0.1:
+            sentiments.append('negatif')
+        else:
+            sentiments.append('netral')
+    
+    return sentiments, polarity_scores, subjectivity_scores
+
+# Fungsi analisis sentimen hybrid
+def hybrid_sentiment_analysis(texts):
+    """Kombinasi lexicon-based dan TextBlob untuk hasil yang lebih akurat"""
+    lexicon_sentiments, pos_scores, neg_scores = lexicon_based_sentiment_analysis(texts)
+    textblob_sentiments, polarity_scores, subjectivity_scores = textblob_sentiment_analysis(texts)
+    
+    final_sentiments = []
+    confidence_scores = []
+    
+    for i in range(len(texts)):
+        lexicon_sent = lexicon_sentiments[i]
+        textblob_sent = textblob_sentiments[i]
+        
+        # Jika kedua metode sepakat
+        if lexicon_sent == textblob_sent:
+            final_sentiments.append(lexicon_sent)
+            confidence = 0.8  # Confidence tinggi
+        else:
+            # Prioritize lexicon untuk bahasa Indonesia
+            if lexicon_sent != 'netral':
+                final_sentiments.append(lexicon_sent)
+                confidence = 0.6
+            else:
+                final_sentiments.append(textblob_sent)
+                confidence = 0.5
+        
+        confidence_scores.append(confidence)
+    
+    return final_sentiments, confidence_scores, pos_scores, neg_scores, polarity_scores
+
+# Fungsi untuk menghitung engagement score
+def calculate_engagement(df, like_col='likes', comment_col='comments', share_col='shares', view_col='views'):
+    """Menghitung engagement score dengan handling missing values"""
+    
+    engagement_scores = []
+    engagement_details = []
+    
+    for _, row in df.iterrows():
+        score = 0
+        details = {}
+        
+        # Handle likes
+        if like_col in df.columns and pd.notna(row[like_col]):
+            likes = float(row[like_col])
+            score += likes * 1
+            details['likes'] = likes
+        else:
+            details['likes'] = 0
+        
+        # Handle comments
+        if comment_col in df.columns and pd.notna(row[comment_col]):
+            comments = float(row[comment_col])
+            score += comments * 2
+            details['comments'] = comments
+        else:
+            details['comments'] = 0
+        
+        # Handle shares
+        if share_col in df.columns and pd.notna(row[share_col]):
+            shares = float(row[share_col])
+            score += shares * 3
+            details['shares'] = shares
+        else:
+            details['shares'] = 0
+        
+        # Handle views
+        if view_col in df.columns and pd.notna(row[view_col]):
+            views = float(row[view_col])
+            score += views * 0.1
+            details['views'] = views
+        else:
+            details['views'] = 0
+        
+        engagement_scores.append(score)
+        engagement_details.append(details)
+    
+    return engagement_scores, engagement_details
+
+
+def categorize_engagement(scores):
+    """Mengkategorikan engagement score menjadi High, Medium, Low"""
+    if len(scores) == 0:
+        return []
+    
+    # Normalize scores
+    scores = np.array(scores)
+    if np.max(scores) > 0:
+        normalized_scores = scores / np.max(scores)
+    else:
+        normalized_scores = scores
+    
+    categories = []
+    for score in normalized_scores:
+        if score >= 0.7:
+            categories.append("High")
+        elif score >= 0.3:
+            categories.append("Medium")
+        else:
+            categories.append("Low")
+    
+    return categories
+
+# Fungsi untuk membuat word cloud
+def create_wordcloud(texts, title="Word Cloud"):
+    """Membuat word cloud dari teks"""
+    all_text = ' '.join([str(text) for text in texts if pd.notna(text)])
+    
+    if not all_text.strip():
+        print("Teks kosong, tidak dapat membuat word cloud")
+        return
+    
+    wordcloud = WordCloud(
+        width=800, 
+        height=400, 
+        background_color='white',
+        colormap='viridis',
+        max_words=100
+    ).generate(all_text)
+    
+    plt.figure(figsize=(10, 5))
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.title(title, fontsize=16)
+    plt.axis('off')
+    plt.show()
+
+# Fungsi utama untuk analisis
+def perform_comprehensive_analysis(file_path, text_column='text'):
+    """Fungsi utama untuk analisis komprehensif"""
+    
+    print("=== MEMBACA FILE ===")
+    df = read_preprocessed_file(file_path)
+    
+    if df is None:
+        return None
+    
+    
+    if text_column not in df.columns:
+        print(f"Kolom '{text_column}' tidak ditemukan. Kolom yang tersedia: {df.columns.tolist()}")
+        text_column = input("Masukkan nama kolom yang berisi teks: ")
+    
+    
+    df_clean = df.dropna(subset=[text_column]).copy()
+    df_clean = df_clean[df_clean[text_column].str.strip() != '']
+    
+    print(f"\nData setelah cleaning: {df_clean.shape}")
+    
+    # Preprocessing tambahan
+    print("\n=== PREPROCESSING TAMBAHAN ===")
+    df_clean['cleaned_text'] = df_clean[text_column].apply(indonesian_text_preprocessing)
+    
+    # Analisis Sentimen
+    print("\n=== ANALISIS SENTIMEN ===")
+    texts = df_clean['cleaned_text'].tolist()
+    
+    # Batasi jumlah data jika terlalu besar
+    if len(texts) > 2000:
+        print("Data terlalu besar, mengambil sample 2000 teks...")
+        texts = texts[:2000]
+        df_clean = df_clean.iloc[:2000].copy()
+    
+    # Lakukan analisis sentimen hybrid
+    sentiments, confidence_scores, pos_scores, neg_scores, polarity_scores = hybrid_sentiment_analysis(texts)
+    
+    df_clean['sentiment'] = sentiments
+    df_clean['confidence_score'] = confidence_scores
+    df_clean['positive_words_count'] = pos_scores
+    df_clean['negative_words_count'] = neg_scores
+    df_clean['polarity_score'] = polarity_scores
+    
+    # Analisis Engagement
+    print("\n=== ANALISIS ENGAGEMENT ===")
+    engagement_scores, engagement_details = calculate_engagement(df_clean)
+    engagement_categories = categorize_engagement(engagement_scores)
+    
+    df_clean['engagement_score'] = engagement_scores
+    df_clean['engagement_category'] = engagement_categories
+    
+    # Tambahkan detail engagement
+    engagement_df = pd.DataFrame(engagement_details)
+    df_clean = pd.concat([df_clean, engagement_df], axis=1)
+    
+    # Hasil Analisis
+    print("\n=== HASIL ANALISIS ===")
+    
+    # Distribusi Sentimen
+    print("\n📊 DISTRIBUSI SENTIMEN:")
+    sentiment_counts = df_clean['sentiment'].value_counts()
+    for sentiment, count in sentiment_counts.items():
+        percentage = (count / len(df_clean)) * 100
+        print(f"{sentiment.upper()}: {count} komentar ({percentage:.1f}%)")
+    
+    # Distribusi Engagement
+    print("\n📊 DISTRIBUSI ENGAGEMENT:")
+    engagement_counts = df_clean['engagement_category'].value_counts()
+    for category, count in engagement_counts.items():
+        percentage = (count / len(df_clean)) * 100
+        print(f"{category}: {count} komentar ({percentage:.1f}%)")
+    
+    # Cross-tabulation
+    print("\n📊 HUBUNGAN SENTIMEN DAN ENGAGEMENT:")
+    cross_tab = pd.crosstab(df_clean['sentiment'], df_clean['engagement_category'], margins=True)
+    print(cross_tab)
+    
+    # Statistik Engagement
+    print("\n📊 STATISTIK ENGAGEMENT PER SENTIMEN:")
+    engagement_stats = df_clean.groupby('sentiment')['engagement_score'].agg([
+        'count', 'mean', 'median', 'std', 'min', 'max'
+    ]).round(2)
+    print(engagement_stats)
+    
+    # Visualisasi
+    print("\n=== VISUALISASI ===")
+    
+    fig, axes = plt.subplots(3, 2, figsize=(15, 18))
+    
+    # 1. Distribusi Sentimen
+    colors = ['#4CAF50', '#FF5252', '#FFC107']
+    sentiment_counts.plot(kind='bar', ax=axes[0,0], color=colors, alpha=0.8)
+    axes[0,0].set_title('Distribusi Sentimen Komentar', fontsize=14, fontweight='bold')
+    axes[0,0].set_ylabel('Jumlah Komentar')
+    axes[0,0].tick_params(axis='x', rotation=0)
+    
+    # 2. Distribusi Engagement
+    engagement_colors = ['#FF5252', '#FFC107', '#4CAF50']
+    engagement_counts.plot(kind='bar', ax=axes[0,1], color=engagement_colors, alpha=0.8)
+    axes[0,1].set_title('Distribusi Engagement Level', fontsize=14, fontweight='bold')
+    axes[0,1].set_ylabel('Jumlah Komentar')
+    axes[0,1].tick_params(axis='x', rotation=0)
+    
+    # 3. Heatmap Sentimen vs Engagement
+    cross_tab_heatmap = pd.crosstab(df_clean['sentiment'], df_clean['engagement_category'])
+    sns.heatmap(cross_tab_heatmap, annot=True, fmt='d', cmap='YlGnBu', ax=axes[1,0])
+    axes[1,0].set_title('Hubungan Sentimen dan Engagement', fontsize=14, fontweight='bold')
+    
+    # 4. Boxplot Engagement by Sentiment
+    df_clean.boxplot(column='engagement_score', by='sentiment', ax=axes[1,1])
+    axes[1,1].set_title('Distribusi Engagement Score per Sentimen', fontsize=14, fontweight='bold')
+    axes[1,1].set_ylabel('Engagement Score')
+    
+    # 5. Word Cloud Positif
+    positive_texts = df_clean[df_clean['sentiment'] == 'positif']['cleaned_text']
+    if not positive_texts.empty:
+        create_wordcloud(positive_texts, "Kata-kata Umum dalam Komentar Positif")
+    else:
+        axes[2,0].text(0.5, 0.5, 'Tidak ada komentar positif', ha='center', va='center')
+        axes[2,0].set_title('Komentar Positif')
+    
+    # 6. Word Cloud Negatif
+    negative_texts = df_clean[df_clean['sentiment'] == 'negatif']['cleaned_text']
+    if not negative_texts.empty:
+        create_wordcloud(negative_texts, "Kata-kata Umum dalam Komentar Negatif")
+    else:
+        axes[2,1].text(0.5, 0.5, 'Tidak ada komentar negatif', ha='center', va='center')
+        axes[2,1].set_title('Komentar Negatif')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # Contoh Komentar per Kategori
+    print("\n=== CONTOH KOMENTAR PER KATEGORI ===")
+    
+    for sentiment in ['positif', 'negatif', 'netral']:
+        sentiment_data = df_clean[df_clean['sentiment'] == sentiment]
+        if not sentiment_data.empty:
+            print(f"\n🎯 KOMENTAR {sentiment.upper()} (Contoh):")
+            for i, (idx, row) in enumerate(sentiment_data.head(3).iterrows()):
+                print(f"{i+1}. '{row['cleaned_text'][:100]}...'")
+                print(f"   📊 Engagement: {row['engagement_category']} (Score: {row['engagement_score']:.2f})")
+                print(f"   ⭐ Confidence: {row['confidence_score']:.2f}")
+    
+    # Simpan hasil
+    output_file = file_path.replace('.', '_analyzed.')
+    df_clean.to_csv(output_file, index=False, encoding='utf-8')
+    print(f"\n💾 Hasil analisis disimpan sebagai: {output_file}")
+    
+    return df_clean
+
+# Main execution
+if __name__ == "__main__":
+    # Path ke file
+    file_path = "/content/sample_data/preprocessed_data.csv"
+    
+    # Jika file tidak ditemukan, minta upload
+    import os
+    if not os.path.exists(file_path):
+        print("📁 File default tidak ditemukan. Silakan upload file preprocessing Anda.")
+        from google.colab import files
+        uploaded = files.upload()
+        
+        if uploaded:
+            file_path = list(uploaded.keys())[0]
+            print(f"📂 File '{file_path}' berhasil diupload!")
+        else:
+            file_path = input("📝 Masukkan path file hasil preprocessing: ")
+    
+    # Jalankan analisis
+    print("🚀 Memulai analisis sentimen dan engagement...")
+    result_df = perform_comprehensive_analysis(file_path)
+    
+    if result_df is not None:
+        # Tampilkan ringkasan akhir
+        print("\n" + "="*60)
+        print("🎉 ANALISIS SELESAI - RINGKASAN HASIL")
+        print("="*60)
+        
+        total_comments = len(result_df)
+        positive_comments = len(result_df[result_df['sentiment'] == 'positif'])
+        negative_comments = len(result_df[result_df['sentiment'] == 'negatif'])
+        neutral_comments = len(result_df[result_df['sentiment'] == 'netral'])
+        
+        print(f"📊 Total Komentar: {total_comments}")
+        print(f"✅ Positif: {positive_comments} ({positive_comments/total_comments*100:.1f}%)")
+        print(f"❌ Negatif: {negative_comments} ({negative_comments/total_comments*100:.1f}%)")
+        print(f"⚪ Netral: {neutral_comments} ({neutral_comments/total_comments*100:.1f}%)")
+        
+        # Rata-rata engagement
+        avg_engagement = result_df['engagement_score'].mean()
+        print(f"📈 Rata-rata Engagement Score: {avg_engagement:.2f}")
+        
+        print("="*60)
