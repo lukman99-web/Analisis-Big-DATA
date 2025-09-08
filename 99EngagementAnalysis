@@ -1,0 +1,491 @@
+!pip install pandas numpy matplotlib seaborn python-docx plotly
+!pip install --upgrade plotly
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from docx import Document
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from datetime import datetime
+import io
+from collections import Counter
+import warnings
+warnings.filterwarnings('ignore')
+
+# Mount Google Drive
+from google.colab import drive
+drive.mount('/content/drive')
+
+def read_analysis_files(sentiment_file_path, engagement_file_path):
+    """Membaca file hasil analisis sentimen dan engagement"""
+    
+    print("📖 Membaca file hasil analisis...")
+    
+    try:
+        # Baca file sentimen
+        if sentiment_file_path.endswith('.csv'):
+            df_sentiment = pd.read_csv(sentiment_file_path)
+        elif sentiment_file_path.endswith('.xlsx'):
+            df_sentiment = pd.read_excel(sentiment_file_path)
+        else:
+            raise ValueError("Format file sentimen tidak didukung")
+        
+        # Baca file engagement
+        if engagement_file_path.endswith('.csv'):
+            df_engagement = pd.read_csv(engagement_file_path)
+        elif engagement_file_path.endswith('.xlsx'):
+            df_engagement = pd.read_excel(engagement_file_path)
+        else:
+            raise ValueError("Format file engagement tidak didukung")
+        
+        print(f"✅ File sentimen berhasil dibaca. Shape: {df_sentiment.shape}")
+        print(f"✅ File engagement berhasil dibaca. Shape: {df_engagement.shape}")
+        
+        return df_sentiment, df_engagement
+        
+    except Exception as e:
+        print(f"❌ Error membaca file: {e}")
+        return None, None
+
+def analyze_sentiment_results(df_sentiment):
+    """Menganalisis hasil sentiment analysis"""
+    
+    print("📊 Menganalisis hasil sentimen...")
+    
+    analysis = {}
+    
+    # Distribusi sentimen
+    sentiment_dist = df_sentiment['sentiment'].value_counts()
+    sentiment_percentage = (df_sentiment['sentiment'].value_counts(normalize=True) * 100).round(2)
+    
+    analysis['sentiment_distribution'] = sentiment_dist
+    analysis['sentiment_percentage'] = sentiment_percentage
+    
+    # Confidence score analysis
+    if 'confidence_score' in df_sentiment.columns:
+        analysis['avg_confidence'] = df_sentiment['confidence_score'].mean()
+        analysis['confidence_by_sentiment'] = df_sentiment.groupby('sentiment')['confidence_score'].mean()
+    
+    # Text length analysis
+    if 'text' in df_sentiment.columns:
+        df_sentiment['text_length'] = df_sentiment['text'].astype(str).apply(len)
+        analysis['avg_text_length'] = df_sentiment['text_length'].mean()
+        analysis['text_length_by_sentiment'] = df_sentiment.groupby('sentiment')['text_length'].mean()
+    
+    return analysis
+
+def analyze_engagement_results(df_engagement):
+    """Menganalisis hasil engagement analysis"""
+    
+    print("📈 Menganalisis hasil engagement...")
+    
+    analysis = {}
+    
+    # Basic engagement metrics
+    engagement_metrics = ['likes', 'comments', 'shares', 'views']
+    for metric in engagement_metrics:
+        if metric in df_engagement.columns:
+            analysis[f'total_{metric}'] = df_engagement[metric].sum()
+            analysis[f'avg_{metric}'] = df_engagement[metric].mean()
+    
+    # Total engagement score
+    if 'total_engagement' in df_engagement.columns:
+        analysis['total_engagement_score'] = df_engagement['total_engagement'].sum()
+        analysis['avg_engagement_score'] = df_engagement['total_engagement'].mean()
+    
+    # Engagement category distribution
+    if 'engagement_category' in df_engagement.columns:
+        engagement_dist = df_engagement['engagement_category'].value_counts()
+        engagement_percentage = (df_engagement['engagement_category'].value_counts(normalize=True) * 100).round(2)
+        analysis['engagement_distribution'] = engagement_dist
+        analysis['engagement_percentage'] = engagement_percentage
+    
+    # Sentiment-engagement correlation
+    if 'sentiment' in df_engagement.columns and 'total_engagement' in df_engagement.columns:
+        sentiment_engagement = df_engagement.groupby('sentiment').agg({
+            'total_engagement': ['mean', 'sum', 'count']
+        }).round(2)
+        analysis['sentiment_engagement'] = sentiment_engagement
+    
+    # Demographic analysis jika ada
+    demographics = ['gender', 'interest', 'location']
+    for demo in demographics:
+        if demo in df_engagement.columns:
+            demo_engagement = df_engagement.groupby(demo)['total_engagement'].sum().nlargest(5)
+            analysis[f'top_{demo}_engagement'] = demo_engagement
+    
+    return analysis
+
+def create_visualizations(df_sentiment, df_engagement):
+    """Membuat visualisasi untuk laporan"""
+    
+    print("🎨 Membuat visualisasi...")
+    
+    images = {}
+    
+    # Setup style
+    plt.style.use('default')
+    sns.set_palette("viridis")
+    
+    # 1. Sentiment Distribution Pie Chart
+    plt.figure(figsize=(8, 6))
+    sentiment_counts = df_sentiment['sentiment'].value_counts()
+    colors = ['#4CAF50', '#FF5252', '#FFC107']  # hijau, merah, kuning
+    plt.pie(sentiment_counts.values, labels=sentiment_counts.index, autopct='%1.1f%%', 
+            colors=colors, startangle=90)
+    plt.title('Distribusi Sentimen')
+    plt.tight_layout()
+    img_buf = io.BytesIO()
+    plt.savefig(img_buf, format='png', dpi=300, bbox_inches='tight')
+    images['sentiment_pie'] = img_buf
+    plt.close()
+    
+    # 2. Engagement Category Bar Chart
+    plt.figure(figsize=(10, 6))
+    if 'engagement_category' in df_engagement.columns:
+        engagement_counts = df_engagement['engagement_category'].value_counts()
+        engagement_counts.plot(kind='bar', color=['#FF5252', '#FFC107', '#4CAF50', '#2196F3', '#9C27B0'])
+        plt.title('Distribusi Kategori Engagement')
+        plt.xlabel('Kategori Engagement')
+        plt.ylabel('Jumlah')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        img_buf = io.BytesIO()
+        plt.savefig(img_buf, format='png', dpi=300, bbox_inches='tight')
+        images['engagement_bar'] = img_buf
+        plt.close()
+    
+    # 3. Sentiment-Engagement Correlation
+    plt.figure(figsize=(10, 6))
+    if 'sentiment' in df_engagement.columns and 'total_engagement' in df_engagement.columns:
+        sentiment_engagement = df_engagement.groupby('sentiment')['total_engagement'].mean()
+        sentiment_engagement.plot(kind='bar', color=['#4CAF50', '#FF5252', '#FFC107'])
+        plt.title('Rata-rata Engagement per Sentimen')
+        plt.xlabel('Sentimen')
+        plt.ylabel('Rata-rata Engagement Score')
+        plt.xticks(rotation=0)
+        plt.tight_layout()
+        img_buf = io.BytesIO()
+        plt.savefig(img_buf, format='png', dpi=300, bbox_inches='tight')
+        images['sentiment_engagement'] = img_buf
+        plt.close()
+    
+    # 4. Top Interests Engagement
+    if 'interest' in df_engagement.columns:
+        plt.figure(figsize=(12, 6))
+        top_interests = df_engagement.groupby('interest')['total_engagement'].sum().nlargest(8)
+        top_interests.plot(kind='bar', color=plt.cm.Set3(np.arange(len(top_interests))))
+        plt.title('Top 8 Interest berdasarkan Total Engagement')
+        plt.xlabel('Interest')
+        plt.ylabel('Total Engagement')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        img_buf = io.BytesIO()
+        plt.savefig(img_buf, format='png', dpi=300, bbox_inches='tight')
+        images['top_interests'] = img_buf
+        plt.close()
+    
+    return images
+
+def create_formal_report(df_sentiment, df_engagement, sentiment_analysis, engagement_analysis, images, output_path):
+    """Membuat laporan formal dalam format Word"""
+    
+    print("📝 Membuat laporan formal...")
+    
+    # Buat dokumen baru
+    doc = Document()
+    
+    # Set margin
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1)
+        section.right_margin = Inches(1)
+    
+    # Judul Laporan
+    title = doc.add_heading('LAPORAN ANALISIS SENTIMEN DAN ENGAGEMENT', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.runs[0].font.color.rgb = RGBColor(0, 51, 102)
+    title.runs[0].font.size = Pt(16)
+    title.runs[0].font.bold = True
+    
+    # Tanggal dan Informasi
+    doc.add_paragraph()
+    date_para = doc.add_paragraph()
+    date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    date_run = date_para.add_run(f"Tanggal: {datetime.now().strftime('%d %B %Y')}")
+    date_run.italic = True
+    
+    doc.add_paragraph()
+    info_para = doc.add_paragraph()
+    info_para.add_run("Disusun oleh: Tim Analisis Data\n")
+    info_para.add_run(f"Total Data: {len(df_sentiment)} entri\n")
+    info_para.add_run(f"Periode Analisis: {df_engagement['date'].min().strftime('%d %B %Y') if 'date' in df_engagement.columns else 'N/A'} - {df_engagement['date'].max().strftime('%d %B %Y') if 'date' in df_engagement.columns else 'N/A'}")
+    
+    # Executive Summary
+    doc.add_heading('1. Ringkasan Eksekutif', level=1)
+    summary = doc.add_paragraph()
+    summary.add_run("Laporan ini menyajikan hasil analisis sentimen dan engagement dari data media sosial. ")
+    
+    # Key findings
+    positive_percentage = sentiment_analysis['sentiment_percentage'].get('positif', 0)
+    total_engagement = engagement_analysis.get('total_engagement_score', 0)
+    
+    summary.add_run(f"Secara keseluruhan, sentimen positif mendominasi dengan {positive_percentage}% dari total data. ")
+    summary.add_run(f"Total engagement yang tercapai adalah {total_engagement:,.0f} poin dengan distribusi yang beragam across berbagai kategori.")
+    
+    # Bagian Analisis Sentimen
+    doc.add_heading('2. Analisis Sentimen', level=1)
+    
+    # Distribusi Sentimen
+    doc.add_heading('2.1 Distribusi Sentimen', level=2)
+    table = doc.add_table(rows=4, cols=3)
+    table.style = 'Table Grid'
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    
+    # Header
+    table.cell(0, 0).text = 'Sentimen'
+    table.cell(0, 1).text = 'Jumlah'
+    table.cell(0, 2).text = 'Persentase'
+    
+    # Data
+    sentiments = ['positif', 'negatif', 'netral']
+    for i, sentiment in enumerate(sentiments, 1):
+        count = sentiment_analysis['sentiment_distribution'].get(sentiment, 0)
+        percentage = sentiment_analysis['sentiment_percentage'].get(sentiment, 0)
+        table.cell(i, 0).text = sentiment.capitalize()
+        table.cell(i, 1).text = f"{count:,.0f}"
+        table.cell(i, 2).text = f"{percentage}%"
+    
+    # Tambahkan gambar pie chart
+    doc.add_paragraph()
+    doc.add_picture(images['sentiment_pie'], width=Inches(5))
+    doc.add_paragraph("Gambar 2.1: Distribusi Sentimen")
+    
+    # Confidence Score jika ada
+    if 'avg_confidence' in sentiment_analysis:
+        doc.add_heading('2.2 Tingkat Kepercayaan Analisis', level=2)
+        conf_para = doc.add_paragraph()
+        conf_para.add_run(f"Rata-rata tingkat kepercayaan (confidence score) analisis sentimen: {sentiment_analysis['avg_confidence']:.2f}\n")
+        
+        if 'confidence_by_sentiment' in sentiment_analysis:
+            conf_para.add_run("Rata-rata confidence score per kategori:\n")
+            for sentiment, score in sentiment_analysis['confidence_by_sentiment'].items():
+                conf_para.add_run(f"- {sentiment.capitalize()}: {score:.2f}\n")
+    
+    # Bagian Analisis Engagement
+    doc.add_heading('3. Analisis Engagement', level=1)
+    
+    # Metrics Dasar
+    doc.add_heading('3.1 Metrics Engagement Dasar', level=2)
+    metrics_table = doc.add_table(rows=5, cols=2)
+    metrics_table.style = 'Table Grid'
+    
+    metrics_data = [
+        ('Total Likes', engagement_analysis.get('total_likes', 0)),
+        ('Total Comments', engagement_analysis.get('total_comments', 0)),
+        ('Total Shares', engagement_analysis.get('total_shares', 0)),
+        ('Total Views', engagement_analysis.get('total_views', 0)),
+        ('Total Engagement Score', engagement_analysis.get('total_engagement_score', 0))
+    ]
+    
+    for i, (metric, value) in enumerate(metrics_data):
+        metrics_table.cell(i, 0).text = metric
+        metrics_table.cell(i, 1).text = f"{value:,.0f}"
+    
+    # Distribusi Kategori Engagement
+    if 'engagement_distribution' in engagement_analysis:
+        doc.add_heading('3.2 Distribusi Kategori Engagement', level=2)
+        eng_table = doc.add_table(rows=len(engagement_analysis['engagement_distribution']) + 1, cols=3)
+        eng_table.style = 'Table Grid'
+        
+        eng_table.cell(0, 0).text = 'Kategori'
+        eng_table.cell(0, 1).text = 'Jumlah'
+        eng_table.cell(0, 2).text = 'Persentase'
+        
+        for i, (category, count) in enumerate(engagement_analysis['engagement_distribution'].items(), 1):
+            percentage = engagement_analysis['engagement_percentage'].get(category, 0)
+            eng_table.cell(i, 0).text = category
+            eng_table.cell(i, 1).text = f"{count:,.0f}"
+            eng_table.cell(i, 2).text = f"{percentage}%"
+    
+    # Tambahkan gambar engagement
+    if 'engagement_bar' in images:
+        doc.add_paragraph()
+        doc.add_picture(images['engagement_bar'], width=Inches(6))
+        doc.add_paragraph("Gambar 3.1: Distribusi Kategori Engagement")
+    
+    # Sentiment-Engagement Correlation
+    if 'sentiment_engagement' in engagement_analysis:
+        doc.add_heading('3.3 Korelasi Sentimen dan Engagement', level=2)
+        corr_para = doc.add_paragraph()
+        corr_para.add_run("Analisis korelasi antara sentimen dan tingkat engagement:\n")
+        
+        sentiment_eng = engagement_analysis['sentiment_engagement']
+        for sentiment in ['positif', 'negatif', 'netral']:
+            if sentiment in sentiment_eng.index:
+                mean_eng = sentiment_eng.loc[sentiment, ('total_engagement', 'mean')]
+                corr_para.add_run(f"- Sentimen {sentiment.capitalize()}: Rata-rata {mean_eng:,.0f} engagement score\n")
+    
+    if 'sentiment_engagement' in images:
+        doc.add_paragraph()
+        doc.add_picture(images['sentiment_engagement'], width=Inches(6))
+        doc.add_paragraph("Gambar 3.2: Rata-rata Engagement per Sentimen")
+    
+    # Demographic Analysis
+    doc.add_heading('4. Analisis Demografis', level=1)
+    
+    # Gender Analysis
+    if 'top_gender_engagement' in engagement_analysis:
+        doc.add_heading('4.1 Engagement berdasarkan Gender', level=2)
+        gender_para = doc.add_paragraph()
+        gender_data = engagement_analysis['top_gender_engagement']
+        for gender, engagement in gender_data.items():
+            gender_para.add_run(f"- {gender}: {engagement:,.0f} engagement score\n")
+    
+    # Interest Analysis
+    if 'top_interest_engagement' in engagement_analysis:
+        doc.add_heading('4.2 Engagement berdasarkan Interest', level=2)
+        interest_para = doc.add_paragraph()
+        interest_data = engagement_analysis['top_interest_engagement']
+        interest_para.add_run("Top 5 Interest berdasarkan Engagement:\n")
+        
+        for interest, engagement in interest_data.items():
+            interest_para.add_run(f"- {interest}: {engagement:,.0f} engagement score\n")
+    
+    if 'top_interests' in images:
+        doc.add_paragraph()
+        doc.add_picture(images['top_interests'], width=Inches(6))
+        doc.add_paragraph("Gambar 4.1: Top Interest berdasarkan Engagement")
+    
+    # Location Analysis
+    if 'top_location_engagement' in engagement_analysis:
+        doc.add_heading('4.3 Engagement berdasarkan Lokasi', level=2)
+        location_para = doc.add_paragraph()
+        location_data = engagement_analysis['top_location_engagement']
+        location_para.add_run("Top 5 Lokasi berdasarkan Engagement:\n")
+        
+        for location, engagement in location_data.items():
+            location_para.add_run(f"- {location}: {engagement:,.0f} engagement score\n")
+    
+    # Insights dan Rekomendasi
+    doc.add_heading('5. Insights dan Rekomendasi Strategis', level=1)
+    
+    insights = doc.add_paragraph()
+    insights.add_run("Berdasarkan analisis yang dilakukan, berikut adalah insights utama:\n\n").bold = True
+    
+    # Insights dari sentimen
+    positive_pct = sentiment_analysis['sentiment_percentage'].get('positif', 0)
+    if positive_pct > 60:
+        insights.add_run("✅ Sentimen positif sangat dominan, menunjukkan penerimaan yang baik dari audience.\n")
+    elif positive_pct > 40:
+        insights.add_run("✅ Sentimen positif cukup baik, namun masih ada ruang untuk improvement.\n")
+    else:
+        insights.add_run("⚠️  Sentimen positif perlu ditingkatkan melalui strategi konten yang lebih baik.\n")
+    
+    # Insights dari engagement
+    avg_engagement = engagement_analysis.get('avg_engagement_score', 0)
+    if avg_engagement > 50:
+        insights.add_run("✅ Tingkat engagement sangat baik, pertahankan kualitas konten.\n")
+    elif avg_engagement > 20:
+        insights.add_run("✅ Engagement cukup baik, optimalkan waktu posting untuk hasil maksimal.\n")
+    else:
+        insights.add_run("⚠️  Engagement perlu ditingkatkan melalui konten yang lebih engaging dan interaktif.\n")
+    
+    # Rekomendasi
+    doc.add_heading('5.1 Rekomendasi Strategis', level=2)
+    recommendations = doc.add_paragraph()
+    recommendations.add_run("1. Tingkatkan frekuensi konten dengan sentimen positif\n")
+    recommendations.add_run("2. Optimalkan waktu posting berdasarkan analisis engagement harian\n")
+    recommendations.add_run("3. Fokus pada interest yang memberikan engagement tertinggi\n")
+    recommendations.add_run("4. Kembangkan konten yang mendorong interaksi (comments dan shares)\n")
+    recommendations.add_run("5. Monitor terus sentimen dan engagement untuk penyesuaian strategi\n")
+    
+    # Kesimpulan
+    doc.add_heading('6. Kesimpulan', level=1)
+    conclusion = doc.add_paragraph()
+    conclusion.add_run("Analisis sentimen dan engagement memberikan wawasan berharga tentang performa konten dan respon audience. ")
+    conclusion.add_run("Data menunjukkan bahwa strategi konten saat ini ")
+    
+    if positive_pct > 50 and avg_engagement > 30:
+        conclusion.add_run("cukup efektif dalam menghasilkan engagement positif. ")
+    else:
+        conclusion.add_run("perlu optimasi untuk meningkatkan engagement dan sentimen positif. ")
+    
+    conclusion.add_run("Rekomendasi strategis yang diberikan dapat diimplementasikan untuk meningkatkan performa keseluruhan.")
+    
+    # Footer
+    doc.add_page_break()
+    footer = doc.sections[0].footer
+    footer_para = footer.paragraphs[0]
+    footer_para.text = "Laporan Analisis Sentimen dan Engagement - Confidential"
+    footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # Simpan dokumen
+    doc.save(output_path)
+    print(f"✅ Laporan berhasil disimpan sebagai: {output_path}")
+    
+    return doc
+
+def main():
+    """Fungsi utama"""
+    
+    print("🚀 MEMULAI PEMBUATAN LAPORAN FORMAL")
+    print("="*50)
+    
+    # Path file (ganti dengan path file Anda)
+    sentiment_file_path = "/content/sample_data/analyzed_data.csv"
+    engagement_file_path = "/content/sample_data/advanced_engagement_analysis.csv"
+    
+    # Jika file tidak ditemukan, minta upload
+    import os
+    if not os.path.exists(sentiment_file_path):
+        print("📁 Upload file hasil analisis sentimen:")
+        from google.colab import files
+        uploaded = files.upload()
+        if uploaded:
+            sentiment_file_path = list(uploaded.keys())[0]
+    
+    if not os.path.exists(engagement_file_path):
+        print("📁 Upload file hasil analisis engagement:")
+        from google.colab import files
+        uploaded = files.upload()
+        if uploaded:
+            engagement_file_path = list(uploaded.keys())[0]
+    
+    # Baca file
+    df_sentiment, df_engagement = read_analysis_files(sentiment_file_path, engagement_file_path)
+    
+    if df_sentiment is None or df_engagement is None:
+        print("❌ Gagal membaca file. Pastikan format file benar.")
+        return
+    
+    # Analisis data
+    print("\n📊 MENGANALISIS DATA...")
+    sentiment_analysis = analyze_sentiment_results(df_sentiment)
+    engagement_analysis = analyze_engagement_results(df_engagement)
+    
+    # Buat visualisasi
+    print("\n🎨 MEMBUAT VISUALISASI...")
+    images = create_visualizations(df_sentiment, df_engagement)
+    
+    # Buat laporan
+    print("\n📝 MEMBUAT LAPORAN...")
+    output_path = "/content/Laporan_Analisis_Sentimen_Engagement.docx"
+    create_formal_report(df_sentiment, df_engagement, sentiment_analysis, engagement_analysis, images, output_path)
+    
+    print("\n🎉 PROSES SELESAI!")
+    print("="*50)
+    print("📋 Laporan formal telah berhasil dibuat dengan format standar.")
+    print("📊 Berikut ringkasan hasil analisis:")
+    print(f"   - Total data: {len(df_sentiment)} entri")
+    print(f"   - Sentimen positif: {sentiment_analysis['sentiment_percentage'].get('positif', 0)}%")
+    print(f"   - Total engagement: {engagement_analysis.get('total_engagement_score', 0):,.0f}")
+    print(f"   - File output: {output_path}")
+
+if __name__ == "__main__":
+    main()
