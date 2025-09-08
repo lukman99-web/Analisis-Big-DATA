@@ -1,0 +1,47 @@
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import random
+ 
+def generate_post_text():
+    all_texts = [
+        "BNI TapCash promo NCT 127 keren banget, hemat 50% di merchant!",
+        "Laba BNI 2023 Rp 20T, bank terbaik di Indonesia!",
+        "QRIS wondr BNI bikin transaksi cepat, sukses terus!",
+        "BNI Expo 2024 target Rp1T, bangga jadi nasabah!",
+        "BNI Direct cash transaksi Rp6T, mantap!",
+        "Aplikasi BNI Mobile error lagi, tolong perbaiki dong!",
+        "Layanan CS BNI lambat, komplain gak ditanggapi!",
+        "TapCash BNI rusak, gak bisa dipakai di merchant.",
+        "Transaksi QRIS gagal, bikin malu di kasir!",
+        "BNI kenapa sih atm selalu antri panjang?",
+        "BNI bagikan dividen Rp13,9T untuk 2023, cek berita!",
+        "BNI Best Employee Award 2024 diumumkan hari ini.",
+        "BNI luncurkan QRIS wondr, ada yang sudah coba?",
+        "HUT BNI ke-78, ada promo apa tahun ini?",
+        "BNI dukung UMKM dengan kredit baru, info lengkap di web."
+    ]
+    return random.choice(all_texts)
+
+# Generate 1500 data
+np.random.seed(42)  # Untuk konsistensi hasil acak
+n_data = 1500
+sources = ['X'] * 500 + ['Facebook'] * 500 + ['Instagram'] * 500
+
+# Generate tanggal dari Jan 2024 - Jul 2024
+start_date = datetime(2024, 1, 1)
+end_date = datetime(2024, 7, 31)
+dates = [start_date + timedelta(days=random.randint(0, (end_date - start_date).days)) for _ in range(n_data)]
+
+# Buat DataFrame
+data = {
+    'post_id': range(1, n_data + 1),
+    'text': [generate_post_text() for _ in range(n_data)],
+    'date': [d.strftime('%Y-%m-%d') for d in dates],
+    'source': sources
+}
+df = pd.DataFrame(data)
+
+# Simpan ke Excel
+df.to_excel('bni_social_media_data_no_eng_sent.xlsx', index=False, engine='openpyxl')
+print("File Excel 'bni_social_media_data_no_eng_sent.xlsx' telah dibuat di direktori lokal!")
