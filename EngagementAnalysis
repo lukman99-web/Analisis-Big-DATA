@@ -28,15 +28,15 @@ random.seed(42)
 # generate data engagement
 def generate_realistic_engagement_data(df):
     """Generate data engagement yang realistis berdasarkan sentimen"""
-    
+
     print("🎭 Generating realistic engagement data...")
-    
+
     n = len(df)
-    
+
     # Generate engagement metrics berdasarkan sentimen
     for idx, row in df.iterrows():
         sentiment = row.get('sentiment', 'netral')
-        
+
         # Base engagement berdasarkan sentimen
         if sentiment == 'positif':
             likes = random.randint(50, 500)
@@ -53,48 +53,48 @@ def generate_realistic_engagement_data(df):
             comments = random.randint(3, 80)
             shares = random.randint(1, 20)
             views = random.randint(400, 4000)
-        
+
         # Add some randomness
         likes += random.randint(-20, 20)
         comments += random.randint(-5, 5)
         shares += random.randint(-3, 3)
-        
+
         # Ensure minimum values
         df.at[idx, 'likes'] = max(0, likes)
         df.at[idx, 'comments'] = max(0, comments)
         df.at[idx, 'shares'] = max(0, shares)
         df.at[idx, 'views'] = max(0, views)
-    
+
     return df
 
 
 def generate_comprehensive_hypothetical_data(df):
     """Generate data"""
-    
+
     print("🎭 Generating comprehensive hypothetical data...")
-    
+
     n = len(df)
-    
+
     # Generate usernames jika tidak ada
     if 'username' not in df.columns:
         df['username'] = [fake.user_name() for _ in range(n)]
-    
+
     # Generate dates untuk day-to-day analysis
     start_date = datetime(2024, 1, 1)
     df['date'] = [start_date + timedelta(days=random.randint(0, 90)) for _ in range(n)]
     df['date'] = pd.to_datetime(df['date'])
-    
+
     # Generate gender data dengan distribusi realistis
     genders = ['Male', 'Female', 'Non-binary']
     gender_weights = [0.45, 0.50, 0.05]  # Distribusi gender
     df['gender'] = [random.choices(genders, weights=gender_weights, k=1)[0] for _ in range(n)]
-    
-    # Generate interests data 
-    interests = ['Technology', 'Fashion', 'Sports', 'Food', 'Travel', 
+
+    # Generate interests data
+    interests = ['Technology', 'Fashion', 'Sports', 'Food', 'Travel',
                 'Music', 'Gaming', 'Education', 'Health', 'Business']
     interest_weights = [25, 15, 12, 18, 10, 8, 5, 4, 2, 1]  # Weighted distribution
     df['interest'] = [random.choices(interests, weights=interest_weights, k=1)[0] for _ in range(n)]
-    
+
     # Generate locations data (kota-kota Indonesia dengan distribusi populasi)
     indonesian_cities = [
         'Jakarta', 'Surabaya', 'Bandung', 'Medan', 'Semarang',
@@ -103,7 +103,7 @@ def generate_comprehensive_hypothetical_data(df):
     ]
     city_weights = [30, 15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 2, 2, 2, 1]  # Berdasarkan populasi
     df['location'] = [random.choices(indonesian_cities, weights=city_weights, k=1)[0] for _ in range(n)]
-    
+
     # Generate follower counts dengan distribusi (beberapa influencer, banyak regular users)
     follower_counts = []
     for _ in range(n):
@@ -114,33 +114,33 @@ def generate_comprehensive_hypothetical_data(df):
         else:  # 80% regular users
             followers = random.randint(100, 1000)
         follower_counts.append(followers)
-    
+
     df['follower_count'] = follower_counts
-    
+
     # Generate engagement metrics yang realistis
     df = generate_realistic_engagement_data(df)
-    
+
     print("✅ Comprehensive hypothetical data generation completed!")
     return df
 
 # analisis Day-to-day Engage User
 def analyze_daily_engagement(df):
     """Analisis engagement harian"""
-    
+
     print("📅 Analyzing day-to-day engagement...")
-    
+
     if 'date' not in df.columns:
         print("⚠️  Kolom 'date' tidak ditemukan untuk analisis harian")
         return None
-    
+
     df['date'] = pd.to_datetime(df['date'])
     df['day'] = df['date'].dt.date
     df['day_of_week'] = df['date'].dt.day_name()
     df['hour'] = df['date'].dt.hour
-    
+
     # Calculate total engagement
     df['total_engagement'] = df['likes'] + df['comments'] * 2 + df['shares'] * 3
-    
+
     # Daily engagement metrics
     daily_engagement = df.groupby('day').agg({
         'likes': 'sum',
@@ -149,27 +149,27 @@ def analyze_daily_engagement(df):
         'views': 'sum',
         'username': 'count'
     }).rename(columns={'username': 'post_count'}).reset_index()
-    
+
     daily_engagement['total_engagement'] = (
-        daily_engagement['likes'] + 
-        daily_engagement['comments'] * 2 + 
+        daily_engagement['likes'] +
+        daily_engagement['comments'] * 2 +
         daily_engagement['shares'] * 3
     )
-    
+
     #Engagement by day of week
     weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     df['day_of_week'] = pd.Categorical(df['day_of_week'], categories=weekday_order, ordered=True)
-    
+
     weekday_engagement = df.groupby('day_of_week').agg({
         'likes': 'mean',
         'comments': 'mean',
         'shares': 'mean',
         'total_engagement': 'mean'
     }).reset_index()
-    
+
     # Best performing days
     best_day = daily_engagement.loc[daily_engagement['total_engagement'].idxmax()]
-    
+
     return {
         'daily_engagement': daily_engagement,
         'weekday_engagement': weekday_engagement,
@@ -180,27 +180,27 @@ def analyze_daily_engagement(df):
 #analisis Engaged User By Gender
 def analyze_engagement_by_gender(df):
     """Analisis engagement berdasarkan gender"""
-    
+
     print("👥 Analyzing engagement by gender...")
-    
+
     if 'gender' not in df.columns:
         print("⚠️  Kolom 'gender' tidak ditemukan")
         return None
-    
+
     # Calculate total engagement first
     df['total_engagement'] = df['likes'] + df['comments'] * 2 + df['shares'] * 3
-    
+
     gender_analysis = df.groupby('gender').agg({
         'likes': ['sum', 'mean', 'count'],
         'comments': ['sum', 'mean'],
         'shares': ['sum', 'mean'],
         'total_engagement': ['sum', 'mean']
     }).round(2)
-    
+
     # Engagement rate by gender
     gender_stats = df.groupby('gender').size()
     engagement_by_gender = df.groupby('gender')['total_engagement'].sum()
-    
+
     return {
         'gender_analysis': gender_analysis,
         'gender_distribution': gender_stats,
@@ -210,26 +210,26 @@ def analyze_engagement_by_gender(df):
 # Fungsi untuk analisis Engaged User By Interest
 def analyze_engagement_by_interest(df):
     """Analisis engagement berdasarkan interest"""
-    
+
     print("🎯 Analyzing engagement by interest...")
-    
+
     if 'interest' not in df.columns:
         print("⚠️  Kolom 'interest' tidak ditemukan")
         return None
-    
+
     # Calculate total engagement first
     df['total_engagement'] = df['likes'] + df['comments'] * 2 + df['shares'] * 3
-    
+
     interest_analysis = df.groupby('interest').agg({
         'likes': ['sum', 'mean', 'count'],
         'comments': ['sum', 'mean'],
         'shares': ['sum', 'mean'],
         'total_engagement': ['sum', 'mean']
     }).round(2)
-    
+
     # Top interests by engagement
     top_interests = interest_analysis[('total_engagement', 'sum')].nlargest(5)
-    
+
     return {
         'interest_analysis': interest_analysis,
         'top_interests': top_interests,
@@ -239,16 +239,16 @@ def analyze_engagement_by_interest(df):
 # Fungsi untuk analisis Engaged User By Locations
 def analyze_engagement_by_location(df):
     """Analisis engagement berdasarkan lokasi"""
-    
+
     print("📍 Analyzing engagement by location...")
-    
+
     if 'location' not in df.columns:
         print("⚠️  Kolom 'location' tidak ditemukan")
         return None
-    
+
     # Calculate total engagement first
     df['total_engagement'] = df['likes'] + df['comments'] * 2 + df['shares'] * 3
-    
+
     location_analysis = df.groupby('location').agg({
         'likes': ['sum', 'mean', 'count'],
         'comments': ['sum', 'mean'],
@@ -256,12 +256,12 @@ def analyze_engagement_by_location(df):
         'total_engagement': ['sum', 'mean'],
         'username': 'nunique'
     }).round(2)
-    
+
     location_analysis.columns = ['_'.join(col).strip() for col in location_analysis.columns.values]
-    
+
     # Top locations by engagement
     top_locations = location_analysis['total_engagement_sum'].nlargest(5)
-    
+
     return {
         'location_analysis': location_analysis,
         'top_locations': top_locations,
@@ -271,16 +271,16 @@ def analyze_engagement_by_location(df):
 # Fungsi untuk analisis Username Top Talker
 def analyze_top_talkers(df):
     """Analisis top talker berdasarkan engagement"""
-    
+
     print("🗣️ Analyzing top talkers...")
-    
+
     if 'username' not in df.columns:
         print("⚠️  Kolom 'username' tidak ditemukan")
         return None
-    
+
     # Calculate total engagement first
     df['total_engagement'] = df['likes'] + df['comments'] * 2 + df['shares'] * 3
-    
+
     top_talkers = df.groupby('username').agg({
         'comments': 'sum',
         'likes': 'sum',
@@ -288,10 +288,10 @@ def analyze_top_talkers(df):
         'total_engagement': 'sum',
         'date': 'count'
     }).rename(columns={'date': 'post_count'}).sort_values('comments', ascending=False)
-    
+
     # Top 10 talkers by comments
     top_10_talkers = top_talkers.head(10)
-    
+
     return {
         'top_talkers': top_talkers,
         'top_10_talkers': top_10_talkers
@@ -300,36 +300,36 @@ def analyze_top_talkers(df):
 # analisis Top Influencer
 def analyze_top_influencers(df):
     """Analisis top influencer berdasarkan engagement rate"""
-    
+
     print("🌟 Analyzing top influencers...")
-    
+
     if 'username' not in df.columns or 'follower_count' not in df.columns:
         print("⚠️  Kolom 'username' atau 'follower_count' tidak ditemukan")
         return None
-    
+
     # Calculate total engagement first
     df['total_engagement'] = df['likes'] + df['comments'] * 2 + df['shares'] * 3
-    
-    influencer_analysis = df.groupby('username').agg({
-        'total_engagement': 'sum',
-        'follower_count': 'first',
-        'post_count': 'count'
-    }).reset_index()
-    
-    # Calculate engagement rate 
+
+    influencer_analysis = df.groupby('username').agg(
+        total_engagement=('total_engagement', 'sum'),
+        follower_count=('follower_count', 'first'),
+        post_count=('post_id', 'count') # Fix: Count an existing column ('post_id') to get the number of posts
+    ).reset_index()
+
+    # Calculate engagement rate
     influencer_analysis['engagement_rate'] = (
         (influencer_analysis['total_engagement'] / influencer_analysis['follower_count']) * 1000
     ).round(2)
-    
+
     # Filter influencers dengan minimal 100 followers
     influencer_analysis = influencer_analysis[influencer_analysis['follower_count'] >= 100]
-    
+
     # Top influencers by engagement rate
     top_influencers_by_rate = influencer_analysis.nlargest(10, 'engagement_rate')
-    
+
     # Top influencers by total engagement
     top_influencers_by_engagement = influencer_analysis.nlargest(10, 'total_engagement')
-    
+
     return {
         'influencer_analysis': influencer_analysis,
         'top_influencers_by_rate': top_influencers_by_rate,
@@ -340,9 +340,9 @@ def analyze_top_influencers(df):
 # Fungsi untuk visualisasi komprehensif
 def create_comprehensive_visualizations(df, analysis_results):
     """Membuat visualisasi komprehensif untuk semua analisis"""
-    
+
     print("📊 Creating comprehensive visualizations...")
-    
+
     fig = make_subplots(
         rows=3, cols=2,
         subplot_titles=(
@@ -357,60 +357,60 @@ def create_comprehensive_visualizations(df, analysis_results):
                [{"type": "bar"}, {"type": "bar"}],
                [{"type": "bar"}, {"type": "bar"}]]
     )
-    
+
     # 1. Daily Engagement Trend
     daily_data = analysis_results['daily_analysis']['daily_engagement']
     fig.add_trace(
-        go.Scatter(x=daily_data['day'], y=daily_data['total_engagement'], 
+        go.Scatter(x=daily_data['day'], y=daily_data['total_engagement'],
                   mode='lines+markers', name='Daily Engagement'),
         row=1, col=1
     )
-    
+
     # 2. Engagement by Gender
     gender_data = analysis_results['gender_analysis']['engagement_by_gender']
     fig.add_trace(
         go.Bar(x=gender_data.index, y=gender_data.values, name='Engagement by Gender'),
         row=1, col=2
     )
-    
+
     # 3. Engagement by Interest
     interest_data = analysis_results['interest_analysis']['top_interests']
     fig.add_trace(
         go.Bar(x=interest_data.index, y=interest_data.values, name='Top Interests'),
         row=2, col=1
     )
-    
+
     # 4. Engagement by Location
     location_data = analysis_results['location_analysis']['top_locations']
     fig.add_trace(
         go.Bar(x=location_data.index, y=location_data.values, name='Top Locations'),
         row=2, col=2
     )
-    
+
     # 5. Top Talkers
     talker_data = analysis_results['top_talkers']['top_10_talkers']['comments'].head(5)
     fig.add_trace(
         go.Bar(x=talker_data.values, y=talker_data.index, orientation='h', name='Top Talkers'),
         row=3, col=1
     )
-    
+
     # 6. Top Influencers
     influencer_data = analysis_results['top_influencers']['top_influencers_by_rate']['engagement_rate'].head(5)
     fig.add_trace(
         go.Bar(x=influencer_data.values, y=influencer_data.index, orientation='h', name='Top Influencers'),
         row=3, col=2
     )
-    
+
     fig.update_layout(height=1200, showlegend=False, title_text="Comprehensive Engagement Analysis Dashboard")
     fig.show()
 
 # Fungsi utama untuk analisis engagement komprehensif
 def perform_advanced_engagement_analysis(file_path):
     """Fungsi utama untuk analisis engagement advanced"""
-    
+
     print("🚀 MEMULAI ANALISIS ENGAGEMENT KOMPREHENSIF")
     print("="*60)
-    
+
     # Baca file
     try:
         if file_path.endswith('.csv'):
@@ -422,93 +422,93 @@ def perform_advanced_engagement_analysis(file_path):
     except Exception as e:
         print(f"❌ Error membaca file: {e}")
         return None, None
-    
+
     print(f"✅ File berhasil dibaca. Shape: {df.shape}")
-    
+
     # Generate comprehensive hypothetical data
     df = generate_comprehensive_hypothetical_data(df)
-    
+
     # Lakukan semua analisis
     analysis_results = {}
-    
+
     print("\n" + "="*60)
     print("📊 MELAKUKAN ANALISIS KOMPREHENSIF")
     print("="*60)
-    
+
     # 1. Daily Engagement Analysis
     analysis_results['daily_analysis'] = analyze_daily_engagement(df)
-    
+
     # 2. Gender Analysis
     analysis_results['gender_analysis'] = analyze_engagement_by_gender(df)
-    
+
     # 3. Interest Analysis
     analysis_results['interest_analysis'] = analyze_engagement_by_interest(df)
-    
+
     # 4. Location Analysis
     analysis_results['location_analysis'] = analyze_engagement_by_location(df)
-    
+
     # 5. Top Talkers Analysis
     analysis_results['top_talkers'] = analyze_top_talkers(df)
-    
+
     # 6. Top Influencers Analysis
     analysis_results['top_influencers'] = analyze_top_influencers(df)
-    
+
     # Tampilkan hasil
     print("\n" + "="*60)
     print("🎯 HASIL ANALISIS ENGAGEMENT KOMPREHENSIF")
     print("="*60)
-    
+
     # Display key insights
     print("\n📈 KEY INSIGHTS:")
-    
+
     # Daily insights
     if analysis_results['daily_analysis']:
         best_day = analysis_results['daily_analysis']['best_day']
         print(f"📅 Best Performing Day: {best_day['day']} with {best_day['total_engagement']:,.0f} engagement")
-    
+
     # Gender insights
     if analysis_results['gender_analysis']:
         gender_engagement = analysis_results['gender_analysis']['engagement_by_gender']
         top_gender = gender_engagement.idxmax()
         print(f"👥 Top Engaging Gender: {top_gender} with {gender_engagement.max():,.0f} total engagement")
-    
+
     # Interest insights
     if analysis_results['interest_analysis']:
         top_interest = analysis_results['interest_analysis']['top_interests'].idxmax()
         top_engagement = analysis_results['interest_analysis']['top_interests'].max()
         print(f"🎯 Top Interest: {top_interest} with {top_engagement:,.0f} total engagement")
-    
+
     # Location insights
     if analysis_results['location_analysis']:
         top_location = analysis_results['location_analysis']['top_locations'].idxmax()
         top_loc_engagement = analysis_results['location_analysis']['top_locations'].max()
         print(f"📍 Top Location: {top_location} with {top_loc_engagement:,.0f} total engagement")
-    
+
     # Top talker insights
     if analysis_results['top_talkers']:
         top_talker = analysis_results['top_talkers']['top_10_talkers'].index[0]
         talker_comments = analysis_results['top_talkers']['top_10_talkers'].iloc[0]['comments']
         print(f"🗣️ Top Talker: {top_talker} with {talker_comments} comments")
-    
+
     # Influencer insights
     if analysis_results['top_influencers']:
         top_influencer = analysis_results['top_influencers']['top_influencers_by_rate'].iloc[0]['username']
         influencer_rate = analysis_results['top_influencers']['top_influencers_by_rate'].iloc[0]['engagement_rate']
         influencer_followers = analysis_results['top_influencers']['top_influencers_by_rate'].iloc[0]['follower_count']
         print(f"🌟 Top Influencer: {top_influencer} with {influencer_rate} engagement rate per 1000 followers ({influencer_followers:,.0f} followers)")
-    
+
     # Visualisasi
     print("\n" + "="*60)
     print("📊 VISUALISASI DATA")
     print("="*60)
-    
+
     create_comprehensive_visualizations(df, analysis_results)
-    
+
     # Detailed reports
     print("\n" + "="*60)
     print("📋 LAPORAN DETAIL")
     print("="*60)
-    
+
     # Print detailed tables
     print("\n🏆 TOP 5 INFLUENCERS BY ENGAGEMENT RATE:")
     if analysis_results['top_influencers']:
@@ -516,52 +516,52 @@ def perform_advanced_engagement_analysis(file_path):
         influencer_df['engagement_rate'] = influencer_df['engagement_rate'].round(2)
         influencer_df['follower_count'] = influencer_df['follower_count'].apply(lambda x: f"{x:,.0f}")
         print(influencer_df[['username', 'engagement_rate', 'follower_count', 'total_engagement']])
-    
+
     print("\n🗣️ TOP 5 TALKERS:")
     if analysis_results['top_talkers']:
         talker_df = analysis_results['top_talkers']['top_10_talkers'].head(5).copy()
         talker_df = talker_df[['comments', 'likes', 'shares', 'total_engagement']]
         print(talker_df)
-    
+
     print("\n🎯 TOP 5 INTERESTS BY ENGAGEMENT:")
     if analysis_results['interest_analysis']:
         interest_df = analysis_results['interest_analysis']['top_interests'].head(5).reset_index()
         interest_df.columns = ['Interest', 'Total Engagement']
         interest_df['Total Engagement'] = interest_df['Total Engagement'].apply(lambda x: f"{x:,.0f}")
         print(interest_df)
-    
+
     # Simpan hasil
     output_file = file_path.replace('.', '_advanced_engagement_analysis.')
     df.to_csv(output_file, index=False, encoding='utf-8')
     print(f"\n💾 Hasil analisis disimpan sebagai: {output_file}")
-    
+
     return df, analysis_results
 
 # Main execution
 if __name__ == "__main__":
     # Path ke file
     file_path = "/content/sample_data/analyzed_data.csv"
-    
-    
+
+
     import os
     if not os.path.exists(file_path):
         print("📁 File default tidak ditemukan. Silakan upload file hasil analisis sentimen.")
         from google.colab import files
         uploaded = files.upload()
-        
+
         if uploaded:
             file_path = list(uploaded.keys())[0]
             print(f"📂 File '{file_path}' berhasil diupload!")
         else:
             file_path = input("📝 Masukkan path file hasil analisis sentimen: ")
-    
+
     # Jalankan analisis
     print("🚀 Memulai analisis engagement komprehensif...")
     result_df, analysis_results = perform_advanced_engagement_analysis(file_path)
-    
+
     if result_df is not None:
         total_engagement = result_df['likes'].sum() + result_df['comments'].sum() * 2 + result_df['shares'].sum() * 3
-        
+
         print("\n🎉 ANALISIS SELESAI!")
         print("="*60)
         print(f"📊 Total data dianalisis: {len(result_df)}")
